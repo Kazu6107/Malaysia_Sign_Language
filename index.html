@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MSL Recognizer — Malaysian Sign Language</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div class="app">
+
+  <header class="topbar">
+    <div class="wordmark">
+      <svg class="hand-glyph" viewBox="0 0 40 40" aria-hidden="true">
+        <circle cx="20" cy="30" r="1.6" class="node n-wrist"/>
+        <circle cx="12" cy="10" r="1.6" class="node"/>
+        <circle cx="16" cy="6" r="1.6" class="node"/>
+        <circle cx="20" cy="4" r="1.6" class="node"/>
+        <circle cx="24" cy="7" r="1.6" class="node"/>
+        <circle cx="27" cy="12" r="1.6" class="node"/>
+        <path class="bone" d="M20,30 L12,10 M20,30 L16,6 M20,30 L20,4 M20,30 L24,7 M20,30 L27,12"/>
+      </svg>
+      <div class="wordmark-text">
+        <span class="title">MSL Recognizer</span>
+        <span class="subtitle">landmark capture &middot; classifier &middot; live recognition</span>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button class="tab-btn active" data-tab="collect" role="tab" aria-selected="true">01 / Collect</button>
+      <button class="tab-btn" data-tab="train" role="tab" aria-selected="false">02 / Train</button>
+      <button class="tab-btn" data-tab="recognize" role="tab" aria-selected="false">03 / Recognize</button>
+    </nav>
+  </header>
+
+  <main class="stage">
+
+    <!-- Shared camera column -->
+    <section class="camera-col">
+      <div class="camera-frame">
+        <video id="video" playsinline autoplay muted></video>
+        <canvas id="overlay"></canvas>
+        <div class="camera-badge" id="cameraStatus">camera off</div>
+        <div class="rec-indicator" id="recIndicator" hidden><span class="dot"></span>recording</div>
+      </div>
+      <div class="camera-controls">
+        <button id="startCamera" class="btn btn-primary">Start camera</button>
+        <select id="labelSelect" class="select"></select>
+      </div>
+      <div class="telemetry" id="telemetry">
+        <div class="telemetry-row"><span>hand detected</span><span id="telHand">—</span></div>
+        <div class="telemetry-row"><span>wrist x, y</span><span id="telWrist">—</span></div>
+        <div class="telemetry-row"><span>fps</span><span id="telFps">—</span></div>
+      </div>
+    </section>
+
+    <!-- Panels -->
+    <section class="panel-col">
+
+      <div class="panel" id="panel-collect" data-panel="collect">
+        <h2>Collect training samples</h2>
+        <p class="hint">Pick a label, hold the sign steady in frame, and capture. Aim for 40–60 samples per static letter/number from a few angles and distances. J and Z are motion signs — use the <strong>motion</strong> capture mode instead of single frames.</p>
+
+        <div class="row gap">
+          <button id="captureBtn" class="btn btn-primary" disabled>Capture sample</button>
+          <button id="burstBtn" class="btn" disabled>Burst capture (2s)</button>
+        </div>
+
+        <div class="mode-toggle">
+          <label><input type="radio" name="captureMode" value="static" checked> static sign</label>
+          <label><input type="radio" name="captureMode" value="motion"> motion sign (J, Z)</label>
+        </div>
+        <div class="row gap" id="motionControls" hidden>
+          <button id="motionRecordBtn" class="btn btn-primary" disabled>Record motion (1.5s)</button>
+        </div>
+
+        <h3>Sample counts</h3>
+        <div id="sampleCounts" class="counts-grid"></div>
+
+        <div class="row gap">
+          <button id="exportData" class="btn">Export dataset (.json)</button>
+          <label class="btn file-btn">Import dataset
+            <input type="file" id="importData" accept=".json" hidden />
+          </label>
+          <button id="clearData" class="btn btn-danger">Clear all data</button>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-train" data-panel="train" hidden>
+        <h2>Train the classifier</h2>
+        <p class="hint">Trains a small neural network in your browser on the static-sign landmarks you collected. Motion signs (J, Z) don't need training — they're matched with DTW against your recorded templates directly.</p>
+
+        <div class="row gap">
+          <label>Epochs <input type="number" id="epochsInput" value="60" min="5" max="300" class="num" /></label>
+          <button id="trainBtn" class="btn btn-primary">Train model</button>
+        </div>
+
+        <div class="progress-wrap" id="trainProgressWrap" hidden>
+          <div class="progress-bar"><div class="progress-fill" id="trainProgressFill"></div></div>
+          <div class="progress-label" id="trainProgressLabel">—</div>
+        </div>
+
+        <canvas id="lossChart" width="480" height="160"></canvas>
+
+        <div class="row gap">
+          <button id="saveModel" class="btn" disabled>Save model to browser</button>
+          <button id="downloadModel" class="btn" disabled>Download model files</button>
+        </div>
+        <div class="status-line" id="trainStatus">no model trained yet</div>
+      </div>
+
+      <div class="panel" id="panel-recognize" data-panel="recognize" hidden>
+        <h2>Live recognition</h2>
+        <p class="hint">Runs your trained classifier on every frame for static signs, and checks the last ~1.5s of wrist motion against your DTW templates for J/Z.</p>
+
+        <div class="prediction-card">
+          <div class="prediction-label" id="predLabel">—</div>
+          <div class="prediction-conf" id="predConf">confidence —</div>
+        </div>
+
+        <div class="top-k" id="topK"></div>
+
+        <div class="row gap">
+          <label><input type="checkbox" id="speakToggle"> speak recognized letter</label>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <footer class="footer">
+    Built for the Malaysian Sign Language recognition project — MediaPipe HandLandmarker + TensorFlow.js, runs entirely in-browser.
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
